@@ -69,10 +69,18 @@ cdef extern from "mesh.h" nogil:
         aiTextureType_DISPLACEMENT
         aiTextureType_LIGHTMAP
         aiTextureType_REFLECTION
+        # PBR materials
+        aiTextureType_BASE_COLOR
+        aiTextureType_NORMAL_CAMERA
+        aiTextureType_EMISSION_COLOR
+        aiTextureType_METALNESS,
+        aiTextureType_DIFFUSE_ROUGHNESS
+        aiTextureType_AMBIENT_OCCLUSION
         aiTextureType_UNKNOWN
 
     cdef enum aiPropertyTypeInfo:
         aiPTI_Float
+        aiPTI_Double
         aiPTI_String
         aiPTI_Integer
         aiPTI_Buffer
