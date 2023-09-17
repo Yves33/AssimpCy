@@ -275,9 +275,11 @@ cdef aiNode buildNode(cScene.aiNode* node, aiNode parent):
 
 cdef class aiMaterial:
     cdef readonly dict properties
+    cdef readonly list stack
 
     def __init__(self):
         self.properties = {}
+        self.stack=[]
 
     def __repr__(self):
         return self.properties.get('NAME', '')
@@ -304,6 +306,9 @@ cdef aiMaterial buildMaterial(cMaterial.aiMaterial* mat):
             if ptype == cMaterial.aiPTI_Float:
                 pvalsize = sizeof(dataStorageF)
                 res =  cMaterial.aiGetMaterialFloatArray(mat, prop.mKey.data, -1, 0, <float*>&pvalF, &pvalsize)
+            elif ptype == cMaterial.aiPTI_Double:
+                pvalsize = sizeof(dataStorageF)
+                res =  cMaterial.aiGetMaterialFloatArray(mat, prop.mKey.data, -1, 0, <float*>&pvalF, &pvalsize)
             elif ptype == cMaterial.aiPTI_Integer:
                 pvalsize = sizeof(dataStorageI)
                 res =  cMaterial.aiGetMaterialIntegerArray(mat, prop.mKey.data, -1, 0, <int*>&pvalI, &pvalsize)
@@ -311,7 +316,7 @@ cdef aiMaterial buildMaterial(cMaterial.aiMaterial* mat):
                 pvalS = new cTypes.aiString()
                 res =  cMaterial.aiGetMaterialString(mat, prop.mKey.data, -1, 0, pvalS)
             else:
-                continue
+                res=0
 
         if res == cTypes.aiReturn_FAILURE:
             continue
@@ -335,6 +340,11 @@ cdef aiMaterial buildMaterial(cMaterial.aiMaterial* mat):
             propval = str(pvalS.data.decode())
 
         nMat.properties[propertyNames.get(sname, sname)] = propval
+        nMat.stack.append({"mKey":sname,
+                            "mSemantic":prop.mSemantic,
+                            "mIndex":prop.mIndex,
+                            "mType":prop.mType,
+                            "mValue":propval})
 
     prop = NULL
     del (prop)
