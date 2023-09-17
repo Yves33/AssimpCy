@@ -103,7 +103,7 @@ cdef extern from "mesh.h" nogil:
 
 
 _aiPTI_Float = aiPTI_Float
-_aiPTI_Double=aiPTI_Double
+_aiPTI_Double = aiPTI_Double
 _aiPTI_String = aiPTI_String
 _aiPTI_Integer = aiPTI_Integer
 _aiPTI_Buffer = aiPTI_Buffer
