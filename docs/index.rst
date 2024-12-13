@@ -18,10 +18,11 @@ The simplest way to start using AssimpCy is installig with Pip::
 
     pip install assimpcy
 
-That line should install the right binary wheel for your system.
-The Assimp library (version 5.0.1) is included so you dont need to download it or compile it.
+That line should install the correct binary wheel for your system.
+The Assimp library (version 5.0.1) is included so you don't need to download it or compile it.
 
-If that does not work, or if you want to update the Assimp library included in AssimpCy, please refer to :doc:`/install` for instructions.
+If that does not work, or if you want to update the Assimp library included in AssimpCy, please refer to
+:doc:`/install` for instructions.
 
 =====
 USAGE

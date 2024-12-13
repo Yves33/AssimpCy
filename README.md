@@ -69,7 +69,7 @@ please check [Installation](http://assimpcy.readthedocs.io/en/latest/install.htm
 
 * Cameras
 * Lights
-* Export functionality
+* Export functionality (basic conversion is working)
 
 Those might be added in the future.
 

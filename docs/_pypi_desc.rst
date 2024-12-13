@@ -49,7 +49,7 @@ Missing:
 
 -  Cameras
 -  Lights
--  Export functionality
+-  Export functionality (basic conversion is working)
 
 Those might be added in the future.
 

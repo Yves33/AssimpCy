@@ -71,6 +71,46 @@ that corresponds to that material::
 
 And so on.
 
+
+Conversion
+^^^^^^^^^^^^^^^^^
+
+You can convert a model directly from one format to another using the :py:func:`convertFile` function of
+:py:class:`Exporter`.
+
+.. code:: python
+
+    from assimpcy import Exporter
+    exporter = Exporter()
+    model_path = 'my_model.3ds'
+    destination = 'my_exported_model.dae'
+    formatID = 'collada'
+    ret = exporter.convertFile(model_path, destination, formatID)
+
+Instead of passing a format name as 'formatID', you can pass an extension supported by your assimp build, e.g.: '.dae'
+
+.. code:: python
+
+    ret = exporter.convertFile(model_path, destination, '.dae')
+
+This function will convert all the data found in the original file into whatever is supported by the target format.
+Check a more complete example in the `Github repo <https://github.com/jr-garcia/AssimpCy/blob/master/examples/>`_.
+
+.. note::
+    While :py:func:`convertFile` supports passing flags to modify the scene before export, this might be tricky.
+    We suggest to experiment first with the usual flags and then, if the result is not the expected, remove all the
+    flags and try again.
+    From the Assimp docs:
+        Specifying 'preprocessing' flags is useful if the input scene does not conform to
+        Assimp's default conventions as specified in the Data Structures Page.
+        In short, this means the geometry data should use a right-handed coordinate systems, face
+        winding should be counter-clockwise and the UV coordinate origin is assumed to be in
+        the upper left. The #aiProcess_MakeLeftHanded, #aiProcess_FlipUVs and
+        #aiProcess_FlipWindingOrder flags are used in the import side to allow users
+        to have those defaults automatically adapted to their conventions. Specifying those flags
+        for exporting has the opposite effect, respectively.
+
+
 Cilly
 ^^^^^
 

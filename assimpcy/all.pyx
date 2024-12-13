@@ -3,8 +3,9 @@
 # cython: language_level=3
 # distutils: language=c++
 
-from . cimport cImporter, cScene, cMesh, cTypes, cMaterial, cAnim, cPostprocess, cTexture
+from . cimport cImporter, cScene, cMesh, cTypes, cMaterial, cAnim, cPostprocess, cTexture, cExporter
 import numpy as np
+from os import path
 cimport numpy as np
 cimport cython
 
@@ -12,6 +13,7 @@ from cython.parallel cimport prange
 
 from libc.string cimport memcpy
 from warnings import warn
+from enum import Enum
 
 ctypedef bint bool
 
@@ -588,8 +590,8 @@ def aiImportFile(str filepath, unsigned int flags=0):
     There is no need to use 'aiReleaseImport' after.
 
 
-    :param path: The path to the 3d model file.
-    :type path: str
+    :param filepath: The path to the 3d model file.
+    :type filepath: str
     :param flags: (Optional) Any "or'ed" combination of aiPostrocessStep flags.
     :type flags: int
     :rtype: aiScene
@@ -607,12 +609,7 @@ def aiImportFile(str filepath, unsigned int flags=0):
         finally:
             with nogil:
                 cImporter.aiReleaseImport(csc)
-#                del csc
-#                csc = NULL
     else:
-#        with nogil:
-#            del csc
-#            csc = NULL
         raise AssimpError(cImporter.aiGetErrorString())
 
 
@@ -622,6 +619,130 @@ def aiReleaseImport(aiScene pScene):
 class AssimpError(Exception):
     pass
 
+# -----------------------------------------------------
+
+class aiReturn(Enum):
+    SUCCESS = cTypes.aiReturn_SUCCESS
+    FAILURE = cTypes.aiReturn_FAILURE
+    OUTOFMEMORY = cTypes.aiReturn_OUTOFMEMORY
+
+cdef class aiExportFormatDesc:
+    cdef readonly str id
+    cdef readonly str description
+    cdef readonly str fileExtension
+
+    def __init__(self):
+        self.id = ''
+        self.description = ''
+        self.fileExtension = ''
+
+    def __str__(self):
+        return self.id
+
+def aiGetExportFormatCount():
+    """
+    Returns the number of export file formats available in the current Assimp build.
+    Use aiGetExportFormatDescription() to retrieve info of a specific export format.
+    """
+    return cExporter.aiGetExportFormatCount()
+
+def aiGetExportFormatDescription(int pIndex):
+    """
+    Returns a description of the nth export file format. Use aiGetExportFormatCount()
+    to learn how many export formats are supported.
+    @param pIndex Index of the export format to retrieve information for. Valid range is
+    0 to aiGetExportFormatCount()
+    @return A description of that specific export format. NULL if pIndex is out of range.
+    """
+    desc = aiExportFormatDesc()
+    cdef const cExporter.aiExportFormatDesc* cdesc
+    cdesc = cExporter.aiGetExportFormatDescription(pIndex)
+    cdef const char* cid = cdesc.id
+    cdef const char* cdescdesc = cdesc.description
+    cdef const char* cext = cdesc.fileExtension
+    cdef str pid = cid.decode()
+    cdef str pdesc = cdescdesc.decode()
+    cdef str pext = cext.decode()
+    desc.id = pid
+    desc.description = pdesc
+    desc.fileExtension = pext
+    cExporter.aiReleaseExportFormatDescription(cdesc)
+    return desc
+
+class Exporter:
+    def getExportFormatsList(self):
+        if self._fileFormats is None:
+            self._fileFormats = []
+            for i in range(aiGetExportFormatCount()):
+                desc = aiGetExportFormatDescription(i)
+                id_ = desc.id
+                ext = desc.fileExtension
+                desc = desc.description
+                self._fileFormats.append((ext, id_, desc))
+        return self._fileFormats
+
+    def __init__(self):
+        self._fileFormats = None
+        self._fileFormats = self.getExportFormatsList()
+        lookup = {}
+        for index, (extension_string, id_string, description_string) in enumerate(self._fileFormats):
+            lookup[id_string] = index
+            lookup['.'+extension_string] = index
+        self._lookup = lookup
+
+    def query_formatId_or_extension(self, query):
+        return self._lookup.get(query, None)
+
+    def convertFile(self, str sourcePath, str destinationPath, str formatId, unsigned int flags=0):
+        """
+        :param sourcePath: The path to the 3d model file to convert.
+        :type sourcePath: str
+        :param destinationPath: The path to save the converted 3d model.
+        :type destinationPath: str
+        :param flags: (Optional) Any "or'ed" combination of aiPostrocessStep flags.
+        :type flags: int
+        :rtype: aiScene
+        """
+        cdef const cScene.aiScene* csc
+        cdef bytes spath = sourcePath.encode()
+        cdef const char* cpath = spath
+        cdef bytes dpath = destinationPath.encode()
+        cdef const char* cdpath = dpath
+        cdef bytes fid
+        cdef const char* cfid
+        cdef cTypes.aiReturn ret
+#        cdef cExporter.Exporter exporter = new cExporter.Exporter()
+
+        if not path.exists(path.dirname(destinationPath)):
+            raise FileNotFoundError('Destination path does not exist.')
+
+        format_type = 'extension' if formatId.startswith('.') else 'format'
+        format_index = self.query_formatId_or_extension(formatId)
+
+        if format_index is None:
+            raise RuntimeError(f"Specified {format_type} ('{formatId}') is not registered as an export format.")
+        elif format_type == "extension":
+            format_id = self._fileFormats[format_index][1]
+
+        fid = formatId.encode()
+        cfid = fid
+
+        with nogil:
+            csc = cImporter.aiImportFile(cpath, flags)
+            if csc:
+                ret = cExporter.aiExportScene(csc, cfid, cdpath, 0)
+                cImporter.aiReleaseImport(csc)
+                with gil:
+                    if ret == cTypes.aiReturn_OUTOFMEMORY:
+                        raise MemoryError('Out of memory.')
+                    else:
+                        return aiReturn(ret)
+            else:
+                with gil:
+                    raise AssimpError(cImporter.aiGetErrorString())
+
+#            del exporter
+#            exporter = NULL
 
 cdef cppclass dataStorageF nogil:
     NUMPYFLOAT_t data[16]

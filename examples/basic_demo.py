@@ -18,16 +18,14 @@ def doImport():
     scene = aiImportFile(model_path, flags)
 
 
-def main():
+def main(repetitions):
     print('Reading \'{}\':'.format(model_path))
     t = Timer(doImport)
-    secs = t.timeit(1)
+    secs = t.timeit(repetitions)
     print('\tHas {} meshes, {} textures, {} materials, {} animations.'.format(scene.mNumMeshes,
                                                                               scene.mNumTextures,
                                                                               scene.mNumMaterials,
                                                                               scene.mNumAnimations))
-
-    print('Took {:0.4f} seconds.'.format(secs))
 
     if scene.HasMeshes:
         print(f'Mesh 0: "{scene.mMeshes[0].mName}"')
@@ -41,6 +39,15 @@ def main():
     if scene.HasMaterials:
         print(f'  Material  0: "{str(scene.mMaterials[0])}"')
 
+    print('Took {:0.4f} seconds.'.format(secs/repetitions))
+
 
 if __name__ == '__main__':
-    main()
+    import sys
+    try:
+        repeat = int(sys.argv[1])
+    except Exception:
+        print("Usage: python basic_demo.py [repetitions=5]")
+        repeat = 5
+
+    main(repeat)

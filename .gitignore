@@ -51,3 +51,4 @@ ENV/
 *.cpp
 /files/
 /examples/dna.txt
+/examples/models/cilly/cilly.dae

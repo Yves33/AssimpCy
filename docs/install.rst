@@ -22,9 +22,9 @@ You will need:
 
    http://www.assimp.org/
 
-#. Compile Assimp with the next options for cmake::
+#. Compile Assimp with the following options for cmake::
 
-    -DBUILD_SHARED_LIBS=OFF -DASSIMP_INCLUDE_INSTALL_DIR=assimpcy_folder/files/include -DASSIMP_LIB_INSTALL_DIR=assimpcy_folder/files/lib
+    -DBUILD_SHARED_LIBS=OFF -DASSIMP_INCLUDE_INSTALL_DIR=assimpcy_folder/files/include -DASSIMP_LIB_INSTALL_DIR=assimpcy_folder/files/lib -DASSIMP_BUILD_ZLIB=ON
 
    Replace ``assimpcy_folder`` with the path where AssimpCy was extracted / cloned.
 
