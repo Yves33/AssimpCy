@@ -3,17 +3,19 @@
 # cython: language_level=3
 # distutils: language=c++
 
-from . cimport cImporter, cScene, cMesh, cTypes, cMaterial, cAnim, cPostprocess, cTexture, cExporter
+from . cimport cImporter, cScene, cMesh, cTypes, cMaterial, cAnim, cPostProcess, cTexture
+from . cimport cdefs, cExporter
 import numpy as np
 from os import path
 cimport numpy as np
 cimport cython
 
-from cython.parallel cimport prange
+#from cython.parallel import prange
 
 from libc.string cimport memcpy
+from libc.stdio cimport printf
 from warnings import warn
-from enum import Enum
+from enum import Enum, Flag
 
 ctypedef bint bool
 
@@ -44,6 +46,7 @@ propertyNames = {
 '$mat.wireframe': 'ENABLE_WIREFRAME',
 '$mat.blend': 'BLEND_FUNC',
 '$mat.opacity': 'OPACITY',
+'$mat.transparencyfactor': 'TRANSPARENCYFACTOR',
 '$mat.bumpscaling': 'BUMPSCALING',
 '$mat.shininess': 'SHININESS',
 '$mat.reflectivity': 'REFLECTIVITY',
@@ -56,16 +59,44 @@ propertyNames = {
 '$clr.transparent': 'COLOR_TRANSPARENT',
 '$clr.reflective': 'COLOR_REFLECTIVE',
 '?bg.global': 'GLOBAL_BACKGROUND_IMAGE',
-'$tex.file': 'TEXTURE_BASE',
-'$tex.mapping': 'MAPPING_BASE',
-'$tex.flags': 'TEXFLAGS_BASE',
-'$tex.uvwsrc': 'UVWSRC_BASE',
-'$tex.mapmodev': 'MAPPINGMODE_V_BASE',
-'$tex.mapaxis': 'TEXMAP_AXIS_BASE',
-'$tex.blend': 'TEXBLEND_BASE',
-'$tex.uvtrafo': 'UVTRANSFORM_BASE',
-'$tex.op': 'TEXOP_BASE',
-'$tex.mapmodeu': 'MAPPINGMODE_U_BASE'}
+'?sh.lang': 'GLOBAL_SHADERLANG',
+'?sh.vs': 'SHADER_VERTEX',
+'?sh.fs': 'SHADER_FRAGMENT',
+'?sh.gs': 'SHADER_GEO',
+'?sh.ts': 'SHADER_TESSELATION',
+'?sh.ps': 'SHADER_PRIMITIVE',
+'?sh.cs': 'SHADER_COMPUTE',
+'$mat.useColorMap': 'USE_COLOR_MAP',
+'$clr.base': 'BASE_COLOR',
+'$mat.useMetallicMap': 'USE_METALLIC_MAP',
+'$mat.metallicFactor': 'METALLIC_FACTOR',
+'$mat.useRoughnessMap': 'USE_ROUGHNESS_MAP',
+'$mat.roughnessFactor': 'ROUGHNESS_FACTOR',
+'$mat.anisotropyFactor': 'ANISOTROPY_FACTOR',
+'$mat.specularFactor': 'SPECULAR_FACTOR',
+'$mat.glossinessFactor': 'GLOSSINESS_FACTOR',
+'$clr.sheen.factor': 'SHEEN_COLOR_FACTOR',
+'$mat.sheen.roughnessFactor': 'SHEEN_ROUGHNESS_FACTOR',
+'$mat.clearcoat.factor': 'CLEARCOAT_FACTOR',
+'$mat.clearcoat.roughnessFactor': 'CLEARCOAT_ROUGHNESS_FACTOR',
+'$mat.transmission.factor': 'TRANSMISSION_FACTOR',
+'$mat.volume.thicknessFactor': 'VOLUME_THICKNESS_FACTOR',
+'$mat.volume.attenuationDistance': 'VOLUME_ATTENUATION_DISTANCE',
+'$mat.volume.attenuationColor': 'VOLUME_ATTENUATION_COLOR',
+'$mat.useEmissiveMap': 'USE_EMISSIVE_MAP',
+'$mat.emissiveIntensity': 'EMISSIVE_INTENSITY',
+'$mat.useAOMap': 'USE_AO_MAP',
+'$tex.file': 'TEXTURE',
+'$tex.uvwsrc': 'UVWSRC',
+'$tex.op': 'TEXOP',
+'$tex.mapping': 'MAPPING',
+'$tex.blend': 'TEXBLEND',
+'$tex.mapmodeu': 'MAPPINGMODE_U',
+'$tex.mapmodev': 'MAPPINGMODE_V',
+'$tex.mapaxis': 'TEXMAP_AXIS',
+'$tex.uvtrafo': 'UVTRANSFORM',
+'$tex.flags': 'TEXFLAGS'
+}
 
 cdef class aiVertexWeight:
     cdef readonly unsigned int mVertexId
@@ -122,6 +153,8 @@ cdef class aiMesh:
         self.mName = ''
         self.mMaterialIndex = -1
         self.mBones = []
+        self.HasVertexColors = []
+        self.HasTextureCoords = []
 
     def __str__(self):
         return self.mName
@@ -130,16 +163,18 @@ cdef class aiMesh:
 @cython.wraparound(False)
 @cython.nonecheck(False)
 cdef aiMesh buildMesh(cMesh.aiMesh* mesh):
-    cdef bint val, hasanycoord, hasanycolor = 0
-    cdef int i, j, k = 0
+    cdef bint val = 0, hasanycoord = 0, hasanycolor = 0
+    cdef unsigned int i = 0, j = 0, k = 0
     cdef aiBone bone
     cdef aiVertexWeight vertW
     cdef aiMesh rMesh = aiMesh()
     cdef np.ndarray tempnd
+
     try:
-        rMesh.mName = str(mesh.mName.data.decode())
+        rMesh.mName = mesh.mName.data.decode("utf-8", errors="replace")
     except UnicodeDecodeError:
         rMesh.mName = str(mesh.mName.data)
+
     rMesh.mNumBones = mesh.mNumBones
     rMesh.mMaterialIndex = mesh.mMaterialIndex
     rMesh.mPrimitiveTypes = mesh.mPrimitiveTypes
@@ -149,7 +184,6 @@ cdef aiMesh buildMesh(cMesh.aiMesh* mesh):
     rMesh.HasNormals = mesh.HasNormals()
     rMesh.HasTangentsAndBitangents = mesh.HasTangentsAndBitangents()
 
-    rMesh.HasVertexColors = []
     k = AI_MAX_NUMBER_OF_COLOR_SETS
     for i in range(k):
         val = mesh.HasVertexColors(i)
@@ -157,12 +191,12 @@ cdef aiMesh buildMesh(cMesh.aiMesh* mesh):
             hasanycolor = val
         rMesh.HasVertexColors.append(val)
 
-    rMesh.HasTextureCoords = []
     k = AI_MAX_NUMBER_OF_TEXTURECOORDS
     for i in range(k):
         rMesh.mNumUVComponents[i] = mesh.mNumUVComponents[i]
         val = mesh.HasTextureCoords(i)
         if val:
+            rMesh.mTextureCoords[i] = np.empty((mesh.mNumVertices, mesh.mNumUVComponents[i]), dtype=NUMPYFLOAT)
             hasanycoord = val
         rMesh.HasTextureCoords.append(val)
 
@@ -175,12 +209,12 @@ cdef aiMesh buildMesh(cMesh.aiMesh* mesh):
         for i in range(rMesh.mNumBones):
             bone = aiBone()
             try:
-                bone.mName = str(mesh.mBones[i].mName.data.decode())
+                bone.mName = mesh.mBones[i].mName.data.decode("utf-8", errors="replace")
             except UnicodeDecodeError:
                 bone.mName = str(mesh.mBones[i].mName.data)
             bone.mOffsetMatrix = np.empty((4, 4), dtype=NUMPYFLOAT)
-            with nogil:
-                memcpy(<void*>bone.mOffsetMatrix.data, <void*>&mesh.mBones[i].mOffsetMatrix, sizeof(NUMPYFLOAT_t) * 16)
+#            with nogil:
+            memcpy(<void*>bone.mOffsetMatrix.data, <void*>&mesh.mBones[i].mOffsetMatrix, sizeof(NUMPYFLOAT_t) * 16)
             for j in range(mesh.mBones[i].mNumWeights):
                 vertW = aiVertexWeight()
                 vertW.mVertexId = mesh.mBones[i].mWeights[j].mVertexId
@@ -211,32 +245,32 @@ cdef aiMesh buildMesh(cMesh.aiMesh* mesh):
             memcpy(<void*>rMesh.mNormals.data, <void*>&mesh.mNormals[0],  mesh.mNumVertices * 3 * sizeof(NUMPYFLOAT_t))
 
         if mesh.HasTangentsAndBitangents():
-            memcpy(<void*>rMesh.mTangents.data, <void*>&mesh.mTangents[0], mesh.mNumVertices * 3 * sizeof(NUMPYFLOAT_t))
-            memcpy(<void*>rMesh.mBitangents.data, <void*>&mesh.mBitangents[0], sizeof(NUMPYFLOAT_t) * mesh.mNumVertices * 3)
+            memcpy(<void*>rMesh.mTangents.data, <void*>&mesh.mTangents[0],
+                   mesh.mNumVertices * 3 * sizeof(NUMPYFLOAT_t))
+            memcpy(<void*>rMesh.mBitangents.data, <void*>&mesh.mBitangents[0],
+                   mesh.mNumVertices * 3 * sizeof(NUMPYFLOAT_t))
 
         if mesh.HasFaces():
-            for i in prange(mesh.mNumFaces, schedule='static'):
-                for j in prange(mesh.mFaces.mNumIndices, schedule='static'):
-                    facememview[i][j] = mesh.mFaces[i].mIndices[j]
+            for i in range(mesh.mNumFaces):
+                memcpy(<void*> &facememview[i, 0],<void*> &mesh.mFaces[i].mIndices[0],
+                       mesh.mFaces[i].mNumIndices * sizeof(int))
 
     if hasanycoord:
-        for j in range(k):
-            if rMesh.HasTextureCoords[j]:
-                # tempnd = np.empty((mesh.mNumVertices, rMesh.mNumUVComponents[j]), dtype=NUMPYFLOAT)
-                tempnd = np.empty((mesh.mNumVertices, 3), dtype=NUMPYFLOAT)
-                with nogil:
-                    memcpy(<void*>tempnd.data, <void*>&mesh.mTextureCoords[j][0], mesh.mNumVertices *
-                                                   3 * sizeof(NUMPYFLOAT_t))
-                rMesh.mTextureCoords[j] = tempnd[:,:rMesh.mNumUVComponents[j]]
+        for i in range(k):
+            if mesh.HasTextureCoords(i):
+                tempnd = rMesh.mTextureCoords[i]
+#                with nogil:
+                memcpy(<void*>tempnd.data, <void*>&mesh.mTextureCoords[i][0], mesh.mNumVertices *
+                                                   mesh.mNumUVComponents[i] * sizeof(NUMPYFLOAT_t))
 
     if hasanycolor:
         k = AI_MAX_NUMBER_OF_COLOR_SETS
-        for j in range(k):
-            if rMesh.HasVertexColors[j]:
+        for i in range(k):
+            if rMesh.HasVertexColors[i]:
                 tempnd = np.empty((mesh.mNumVertices, 4), dtype=NUMPYFLOAT)
-                with nogil:
-                    memcpy(<void*>tempnd.data, <void*>&mesh.mColors[j][0], mesh.mNumVertices * 4 * sizeof(NUMPYFLOAT_t))
-                rMesh.mColors[j] = tempnd
+#                with nogil:
+                memcpy(<void*>tempnd.data, <void*>&mesh.mColors[i][0], mesh.mNumVertices * 4 * sizeof(NUMPYFLOAT_t))
+                rMesh.mColors[i] = tempnd
 
     return rMesh
 
@@ -264,82 +298,224 @@ cdef class aiNode:
 
 cdef aiNode buildNode(cScene.aiNode* node, aiNode parent):
     cdef aiNode rNode = aiNode()
-    cdef unsigned int i = 0, j
+    cdef unsigned int i = 0, k= 0
     rNode.mParent = parent
     rNode.mNumMeshes = node.mNumMeshes
     try:
-        rNode.mName = str(node.mName.data.decode())
+        rNode.mName = node.mName.data.decode("utf-8", errors="replace")
     except UnicodeDecodeError:
         rNode.mName = str(node.mName.data)
     rNode.mNumChildren = node.mNumChildren
     rNode.mTransformation = np.empty((4, 4), dtype=NUMPYFLOAT)
-    with nogil:
-        memcpy(<void*>rNode.mTransformation.data, <void*>&node.mTransformation, sizeof(NUMPYFLOAT_t) * 16)
+#    with nogil:
+    memcpy(<void*>rNode.mTransformation.data, <void*>&node.mTransformation, sizeof(NUMPYFLOAT_t) * 16)
 
-    j = rNode.mNumChildren
-    for i in range(j):
+    k = rNode.mNumChildren
+    for i in range(k):
         rNode.mChildren.append(buildNode(node.mChildren[i], rNode))
 
-    j = rNode.mNumMeshes
-    for i in range(j):
+    k = rNode.mNumMeshes
+    for i in range(k):
         rNode.mMeshes.append(node.mMeshes[i])
     return rNode
 
 
 # -----------------------------------------------------
 
+class aiTextureType(Enum):
+    aiTextureType_NONE              = cMaterial.aiTextureType_NONE
+    aiTextureType_DIFFUSE           = cMaterial.aiTextureType_DIFFUSE
+    aiTextureType_SPECULAR          = cMaterial.aiTextureType_SPECULAR
+    aiTextureType_AMBIENT           = cMaterial.aiTextureType_AMBIENT
+    aiTextureType_EMISSIVE          = cMaterial.aiTextureType_EMISSIVE
+    aiTextureType_HEIGHT            = cMaterial.aiTextureType_HEIGHT
+    aiTextureType_NORMALS           = cMaterial.aiTextureType_NORMALS
+    aiTextureType_SHININESS         = cMaterial.aiTextureType_SHININESS
+    aiTextureType_OPACITY           = cMaterial.aiTextureType_OPACITY
+    aiTextureType_DISPLACEMENT      = cMaterial.aiTextureType_DISPLACEMENT
+    aiTextureType_LIGHTMAP          = cMaterial.aiTextureType_LIGHTMAP
+    aiTextureType_REFLECTION        = cMaterial.aiTextureType_REFLECTION
+    # PBR materials
+    aiTextureType_BASE_COLOR        = cMaterial.aiTextureType_BASE_COLOR
+    aiTextureType_NORMAL_CAMERA     = cMaterial.aiTextureType_NORMAL_CAMERA
+    aiTextureType_EMISSION_COLOR    = cMaterial.aiTextureType_EMISSION_COLOR
+    aiTextureType_METALNESS         = cMaterial.aiTextureType_METALNESS
+    aiTextureType_DIFFUSE_ROUGHNESS = cMaterial.aiTextureType_DIFFUSE_ROUGHNESS
+    aiTextureType_AMBIENT_OCCLUSION = cMaterial.aiTextureType_AMBIENT_OCCLUSION
+
+    aiTextureType_UNKNOWN           = cMaterial.aiTextureType_UNKNOWN
+
+class aiTextureOp(Enum):
+    aiTextureOp_Multiply  = cMaterial.aiTextureOp_Multiply
+    aiTextureOp_Add       = cMaterial.aiTextureOp_Add
+    aiTextureOp_Subtract  = cMaterial.aiTextureOp_Subtract
+    aiTextureOp_Divide    = cMaterial.aiTextureOp_Divide
+    aiTextureOp_SmoothAdd = cMaterial.aiTextureOp_SmoothAdd
+    aiTextureOp_SignedAdd = cMaterial.aiTextureOp_SignedAdd
+
+class aiTextureMapping(Enum):
+    aiTextureMapping_UV         = cMaterial.aiTextureMapping_UV
+    aiTextureMapping_SPHERE     = cMaterial.aiTextureMapping_SPHERE
+    aiTextureMapping_CYLINDER   = cMaterial.aiTextureMapping_CYLINDER
+    aiTextureMapping_BOX        = cMaterial.aiTextureMapping_BOX
+    aiTextureMapping_PLANE      = cMaterial.aiTextureMapping_PLANE
+    aiTextureMapping_OTHER      = cMaterial.aiTextureMapping_OTHER
+
+class aiTextureMapMode(Enum):
+    aiTextureMapMode_Wrap    = cMaterial.aiTextureMapMode_Wrap
+    aiTextureMapMode_Clamp   = cMaterial.aiTextureMapMode_Clamp
+    aiTextureMapMode_Decal   = cMaterial.aiTextureMapMode_Decal
+    aiTextureMapMode_Mirror  = cMaterial.aiTextureMapMode_Mirror
+
+class aiShadingMode(Enum):
+    aiShadingMode_Flat          = cMaterial.aiShadingMode_Flat
+    aiShadingMode_Gouraud       = cMaterial.aiShadingMode_Gouraud
+    aiShadingMode_Phong         = cMaterial.aiShadingMode_Phong
+    aiShadingMode_Blinn         = cMaterial.aiShadingMode_Blinn
+    aiShadingMode_Toon          = cMaterial.aiShadingMode_Toon
+    aiShadingMode_OrenNayar     = cMaterial.aiShadingMode_OrenNayar
+    aiShadingMode_Minnaert      = cMaterial.aiShadingMode_Minnaert
+    aiShadingMode_CookTorrance  = cMaterial.aiShadingMode_CookTorrance
+    aiShadingMode_NoShading     = cMaterial.aiShadingMode_NoShading
+    aiShadingMode_Fresnel       = cMaterial.aiShadingMode_Fresnel
+
+class aiTextureFlags(Enum):
+    aiTextureFlags_Invert       = cMaterial.aiTextureFlags_Invert
+    aiTextureFlags_UseAlpha     = cMaterial.aiTextureFlags_UseAlpha
+    aiTextureFlags_IgnoreAlpha  = cMaterial.aiTextureFlags_IgnoreAlpha
+
+class aiBlendMode(Enum):
+    aiBlendMode_Default   = cMaterial.aiBlendMode_Default
+    aiBlendMode_Additive  = cMaterial.aiBlendMode_Additive
+
+
 cdef class aiMaterial:
+    cdef readonly str name
     cdef readonly dict properties
+    cdef readonly dict textures
 
     def __init__(self):
         self.properties = {}
+        self.name = ''
+        self.textures = {}
 
     def __repr__(self):
-        return self.properties.get('NAME', '')
+        return self.name
+
+cdef dict TEXTURE_TYPE_DICT = {
+    cMaterial.aiTextureType_DIFFUSE: "Diffuse",
+    cMaterial.aiTextureType_SPECULAR: "Specular",
+    cMaterial.aiTextureType_AMBIENT: "Ambient",
+    cMaterial.aiTextureType_EMISSIVE: "Emissive",
+    cMaterial.aiTextureType_HEIGHT: "Height",
+    cMaterial.aiTextureType_NORMALS: "Normals",
+    cMaterial.aiTextureType_SHININESS: "Shininess",
+    cMaterial.aiTextureType_OPACITY: "Opacity",
+    cMaterial.aiTextureType_DISPLACEMENT: "Displacement",
+    cMaterial.aiTextureType_LIGHTMAP: "Lightmap",
+    cMaterial.aiTextureType_REFLECTION: "Reflection",
+    # PBR
+    cMaterial.aiTextureType_BASE_COLOR: "Base Color",
+    cMaterial.aiTextureType_NORMAL_CAMERA: "Normal Camera",
+    cMaterial.aiTextureType_EMISSION_COLOR: "Emission Color",
+    cMaterial.aiTextureType_METALNESS: "Metalness",
+    cMaterial.aiTextureType_DIFFUSE_ROUGHNESS: "Diffuse Roughness",
+    cMaterial.aiTextureType_AMBIENT_OCCLUSION: "Ambient Occlusion",
+
+    cMaterial.aiTextureType_UNKNOWN: "Unknown"
+}
+
+cdef str TextureTypeToString(cMaterial.aiTextureType type):
+    return TEXTURE_TYPE_DICT.get(type, "Unknown")
+
+def stringToTextureType(str type):
+    for key, value in TEXTURE_TYPE_DICT.items():
+        if value.lower() == type.lower():
+            return aiTextureType(key)
+    return aiTextureType.aiTextureType_UNKNOWN
+
+cdef str getTextureID(str type, int index):
+    '''Function to create a texture ID string'''
+    return f"TEXTURE_{type.replace(' ', '_').upper()}_{index}"
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.nonecheck(False)
-cdef aiMaterial buildMaterial(cMaterial.aiMaterial* mat):
+cdef aiMaterial buildMaterial(cMaterial.aiMaterial* mat, int idx):
     cdef cMaterial.aiMaterialProperty* prop
     cdef dataStorageF pvalF
     cdef dataStorageI pvalI
-    cdef cTypes.aiString* pvalS = NULL
-    cdef unsigned int pvalsize, i, j = 0
-    cdef int res = 0
+    cdef cTypes.aiString pvalS, texPath
+    cdef unsigned int ptype = 0, pvalsize = 0, i = 0, j = 0, semantic = 0, texType = 0, texIndex = 0, mIndex = 0
+    cdef cTypes.aiReturn res
     cdef object propval = None
     cdef aiMaterial nMat = aiMaterial()
-    cdef str sname
-    cdef int ptype
+    cdef str sname, tname
+    cdef cMaterial.aiTextureType type
+    cdef TextureInfo tinfo
+    cdef const char* mKey
 
+    cdef cMaterial.aiTextureMapping mapping = cMaterial.aiTextureMapping_UV
+    cdef unsigned int uvindex = 0
+    cdef cdefs.ai_real blend = 1.0
+    cdef cMaterial.aiTextureOp op = cMaterial.aiTextureOp_Multiply
+    cdef unsigned int flags = 0
+    cdef cMaterial.aiTextureMapMode mapmode[2]
+    mapmode[:] = [cMaterial.aiTextureMapMode_Wrap, cMaterial.aiTextureMapMode_Wrap]
+
+    cdef cTypes.aiString matName = mat.GetName()
+
+    try:
+        nMat.name = matName.data.decode("utf-8", errors="replace")
+    except UnicodeDecodeError:
+        nMat.name = str(matName.data)
+
+    if nMat.name == '':
+        nMat.name = f"UnnamedMaterial{idx}"
+
+    # Parse properties
     for i in range(mat.mNumProperties):
         with nogil:
             prop = mat.mProperties[i]
             ptype = prop.mType
-            if ptype == cMaterial.aiPTI_Float:
+            semantic = prop.mSemantic
+            mIndex = prop.mIndex
+            mKey = prop.mKey.data
+            if ptype == cMaterial.aiPTI_Float or ptype == cMaterial.aiPTI_Double:
                 pvalsize = sizeof(dataStorageF)
-                res =  cMaterial.aiGetMaterialFloatArray(mat, prop.mKey.data, -1, 0, <float*>&pvalF, &pvalsize)
+                res =  cMaterial.aiGetMaterialFloatArray(mat, mKey, semantic, mIndex,
+                                                         <float*>&pvalF, &pvalsize)
             elif ptype == cMaterial.aiPTI_Integer:
                 pvalsize = sizeof(dataStorageI)
-                res =  cMaterial.aiGetMaterialIntegerArray(mat, prop.mKey.data, -1, 0, <int*>&pvalI, &pvalsize)
+                res =  cMaterial.aiGetMaterialIntegerArray(mat, mKey, semantic, mIndex,
+                                                           <int*>&pvalI, &pvalsize)
             elif ptype == cMaterial.aiPTI_String:
-                if pvalS is not NULL:
-                    del pvalS
-                pvalS = new cTypes.aiString()
-                res =  cMaterial.aiGetMaterialString(mat, prop.mKey.data, -1, 0, pvalS)
+                res =  cMaterial.aiGetMaterialString(mat, mKey, semantic, mIndex, &pvalS)
             else:
+                if ptype != cMaterial.aiPTI_Buffer:
+                    printf("Unhandled Property type: %d\n", ptype)
                 continue
 
+        try:
+            sname = mKey.decode("utf-8", errors="replace")
+        except UnicodeDecodeError:
+            sname = str(mKey)
+
+        sname = propertyNames.get(sname, sname)
+
+        if semantic != cMaterial.aiTextureType_NONE:
+            tname = TextureTypeToString(<cMaterial.aiTextureType>semantic)
+            separator = "_" if sname in propertyNames else "."
+            sname += f"{separator}{tname.upper() if separator == '_' else tname}{separator}{mIndex}"
+            sname = sname.replace(' ', '_')
+
         if res == cTypes.aiReturn_FAILURE:
+            print(f"Failed to retrieve value of property '{sname}'.")
             continue
         elif res == cTypes.aiReturn_OUTOFMEMORY:
             raise MemoryError('Out of memory.')
 
-        try:
-            sname = str(prop.mKey.data.decode())
-        except UnicodeDecodeError:
-            sname = str(prop.mKey.data)
-        if ptype == cMaterial.aiPTI_Float:
+        if ptype == cMaterial.aiPTI_Float  or ptype == cMaterial.aiPTI_Double:
             if pvalsize == 1:
                 propval = pvalF.data[0]
             else:
@@ -353,18 +529,59 @@ cdef aiMaterial buildMaterial(cMaterial.aiMaterial* mat):
                 propval = asNumpyArray(&pvalI)
         elif ptype == cMaterial.aiPTI_String:
             try:
-                propval = str(pvalS.data.decode())
+                propval = pvalS.data.decode("utf-8", errors="replace")
             except UnicodeDecodeError:
                 propval = str(pvalS.data)
-        nMat.properties[propertyNames.get(sname, sname)] = propval
 
-    with nogil:
-        if pvalS is not NULL:
-            del pvalS
-            pvalS = NULL
+        nMat.properties[sname] = propval
+
+    # Parse textures
+    for texType in range(<unsigned int>cMaterial.aiTextureType_UNKNOWN):
+        type = <cMaterial.aiTextureType>texType
+        for texIndex in range(<unsigned int>mat.GetTextureCount(type)):
+            tname = getTextureID(TextureTypeToString(type), texIndex)
+#            with nogil:
+#                res =  mat.GetTexture(type, texIndex, &texPath,
+#                                  &mapping, &uvindex, &blend, &op, mapmode)
+            res = cMaterial.aiGetMaterialTexture(mat, type, texIndex, &texPath,
+                                              &mapping, &uvindex, &blend, &op,
+                                              mapmode, &flags)
+
+            if res == cTypes.aiReturn_SUCCESS:
+                try:
+                    tpath = texPath.data.decode("utf-8", errors="replace")
+                except UnicodeDecodeError:
+                    tpath = str(texPath.data)
+
+                tinfo = TextureInfo(texType, texIndex, tpath, mapping, uvindex, blend, op, mapmode)
+                nMat.textures[tname] = tinfo
 
     return nMat
 
+
+cdef class TextureInfo:
+    cdef readonly object type
+    cdef readonly unsigned int index
+    cdef readonly str path
+    cdef readonly object mapping
+    cdef readonly int uvindex
+    cdef readonly float blend
+    cdef readonly object op
+    cdef readonly list mapmode
+
+    def __init__(self, type, index, path, mapping,
+        uvindex,
+        blend,
+        op,
+        mapmode):
+        self.type     = aiTextureType(type)
+        self.index    = index
+        self.path     = path
+        self.mapping  = aiTextureMapping(mapping)
+        self.uvindex  = uvindex
+        self.blend    = blend
+        self.op       = aiTextureOp(op)
+        self.mapmode  = [aiTextureMapMode(mm) for mm in mapmode]
 
 # -----------------------------------------------------
 
@@ -376,7 +593,9 @@ cdef class aiTexture:
     cdef readonly str mFilename
 
     def __init__(self):
-        pass
+        self.mWidth = 0
+        self.mHeight = 0
+        self.mFilename = ''
 
     def __repr__(self):
         return f"texture {self.mWidth} x {self.mHeight}"
@@ -390,17 +609,19 @@ cdef aiTexture buildTexture(cTexture.aiTexture* tex):
     nTex.mHeight=tex.mHeight
     nTex.achFormatHint=tex.achFormatHint
     try:
-        nTex.mFilename = str(tex.mFilename.data.decode())
+        nTex.mFilename = tex.mFilename.data.decode("utf-8", errors="replace")
     except UnicodeDecodeError:
         nTex.mFilename = str(tex.mFilename.data)
     if nTex.mHeight==0 and nTex.mWidth>0:
         nTex.pcData = np.empty(nTex.mWidth, dtype=NUMPYBYTE)
-        with nogil:
-            memcpy(<void*>nTex.pcData.data, <void*>&tex.pcData[0],  nTex.mWidth * sizeof(NUMPYBYTE_t))
+#        with nogil:
+        memcpy(<void*>nTex.pcData.data, <void*>&tex.pcData[0],  nTex.mWidth * sizeof(NUMPYBYTE_t))
     elif nTex.mHeight>0 and nTex.mWidth>0:
         nTex.pcData = np.empty(nTex.mWidth*nTex.mHeight*4, dtype=NUMPYBYTE)
-        with nogil:
-            memcpy(<void*>nTex.pcData.data, <void*>&tex.pcData[0],  nTex.mWidth*nTex.mHeight * 4 * sizeof(NUMPYBYTE_t))
+#        with nogil:
+        memcpy(<void*>nTex.pcData.data, <void*>&tex.pcData[0],  nTex.mWidth*nTex.mHeight * 4 * sizeof(NUMPYBYTE_t))
+    else:
+        raise RuntimeError(f"Unhandled texture arrangement (nTex.mWidth={nTex.mWidth})")
 
     return nTex
 
@@ -436,26 +657,28 @@ cdef class aiNodeAnim:
 @cython.wraparound(False)
 @cython.nonecheck(False)
 cdef aiNodeAnim buildAnimNode(cAnim.aiNodeAnim* channel):
-    cdef int i = 0, j
+    cdef unsigned int i = 0, k = 0
     cdef cAnim.aiVectorKey vkey
     cdef cAnim.aiQuatKey rkey
     cdef aiNodeAnim node = aiNodeAnim()
+
     try:
-        node.mNodeName = str(channel.mNodeName.data.decode())
+        node.mNodeName = channel.mNodeName.data.decode("utf-8", errors="replace")
     except UnicodeDecodeError:
         node.mNodeName = str(channel.mNodeName.data)
-    j = channel.mNumPositionKeys
-    for i in range(j):
+
+    k = channel.mNumPositionKeys
+    for i in range(k):
         vkey = channel.mPositionKeys[i]
         node.mPositionKeys.append(buildKey(&vkey))
 
-    j = channel.mNumRotationKeys
-    for i in range(j):
+    k = channel.mNumRotationKeys
+    for i in range(k):
         rkey = channel.mRotationKeys[i]
         node.mRotationKeys.append(buildKey(&rkey))
 
-    j = channel.mNumScalingKeys
-    for i in range(j):
+    k = channel.mNumScalingKeys
+    for i in range(k):
         vkey = channel.mScalingKeys[i]
         node.mScalingKeys.append(buildKey(&vkey))
 
@@ -466,15 +689,15 @@ cdef aiNodeAnim buildAnimNode(cAnim.aiNodeAnim* channel):
 @cython.nonecheck(False)
 cdef aiKey buildKey(anykey* key):
     cdef aiKey pykey = aiKey()
-    cdef int kl
+    cdef unsigned int kl
     if anykey  == cAnim.aiVectorKey:
         kl = 3
     else:
         kl = 4
     pykey.mValue = np.empty((kl), dtype=NUMPYFLOAT)
-    with nogil:
-        pykey.mTime = key.mTime
-        memcpy(<void*>pykey.mValue.data, <void*>&key.mValue, kl * sizeof(NUMPYFLOAT_t))
+#    with nogil:
+    pykey.mTime = key.mTime
+    memcpy(<void*>pykey.mValue.data, <void*>&key.mValue, kl * sizeof(NUMPYFLOAT_t))
     return pykey
 
 cdef class aiAnimation:
@@ -495,15 +718,15 @@ cdef class aiAnimation:
 @cython.nonecheck(False)
 cdef aiAnimation buildAnimation(cAnim.aiAnimation* anim):
     cdef aiAnimation nAnim = aiAnimation()
-    cdef int i = 0, j
+    cdef unsigned int i = 0, k = 0
     try:
-        nAnim.mName = str(anim.mName.data.decode())
+        nAnim.mName = anim.mName.data.decode("utf-8", errors="replace")
     except UnicodeDecodeError:
         nAnim.mName = str(anim.mName.data)
     nAnim.mDuration = anim.mDuration
     nAnim.mTicksPerSecond = anim.mTicksPerSecond
-    j = anim.mNumChannels
-    for i in range(j):
+    k = anim.mNumChannels
+    for i in range(k):
         nAnim.mChannels.append(buildAnimNode(anim.mChannels[i]))
     return nAnim
 
@@ -543,7 +766,7 @@ cdef class aiScene:
 @cython.nonecheck(False)
 cdef aiScene buildScene(const cScene.aiScene *cs):
     cdef aiScene scene = aiScene()
-    cdef unsigned int i, j
+    cdef unsigned int i = 0, k = 0
     # scene.mFlags
     scene.mRootNode  = buildNode(cs.mRootNode, None)
     scene.mNumMeshes = cs.mNumMeshes
@@ -562,20 +785,20 @@ cdef aiScene buildScene(const cScene.aiScene *cs):
     scene.HasCameras = scene.mNumCameras
     scene.HasAnimations = scene.mNumAnimations
 
-    j = scene.mNumMeshes
-    for i in range(j):
+    k = scene.mNumMeshes
+    for i in range(k):
         scene.mMeshes.append(buildMesh(cs.mMeshes[i]))
 
-    j = scene.mNumMaterials
-    for i in range(j):
-        scene.mMaterials.append(buildMaterial(cs.mMaterials[i]))
+    k = scene.mNumMaterials
+    for i in range(k):
+        scene.mMaterials.append(buildMaterial(cs.mMaterials[i], i))
 
-    j = scene.mNumAnimations
-    for i in range(j):
+    k = scene.mNumAnimations
+    for i in range(k):
         scene.mAnimations.append(buildAnimation(cs.mAnimations[i]))
-        
-    j = scene.mNumTextures
-    for i in range(j):
+
+    k = scene.mNumTextures
+    for i in range(k):
         scene.mTextures.append(buildTexture(cs.mTextures[i]))
 
     return scene
@@ -660,9 +883,9 @@ def aiGetExportFormatDescription(int pIndex):
     cdef const char* cid = cdesc.id
     cdef const char* cdescdesc = cdesc.description
     cdef const char* cext = cdesc.fileExtension
-    cdef str pid = cid.decode()
-    cdef str pdesc = cdescdesc.decode()
-    cdef str pext = cext.decode()
+    cdef str pid = cid.decode("utf-8", errors="replace")
+    cdef str pdesc = cdescdesc.decode("utf-8", errors="replace")
+    cdef str pext = cext.decode("utf-8", errors="replace")
     desc.id = pid
     desc.description = pdesc
     desc.fileExtension = pext
@@ -746,13 +969,13 @@ class Exporter:
 
 cdef cppclass dataStorageF nogil:
     NUMPYFLOAT_t data[16]
-    int validLenght
+    unsigned int validLenght
     dataStorageF():
         validLenght = 0
 
 cdef cppclass dataStorageI nogil:
     NUMPYINT_t data[16]
-    int validLenght
+    unsigned int validLenght
     dataStorageI():
         validLenght = 0
 
@@ -760,7 +983,7 @@ cdef cppclass dataStorageI nogil:
 @cython.wraparound(False)
 @cython.nonecheck(False)
 cdef np.ndarray asNumpyArray(i_f* ds):
-    cdef int i
+    cdef unsigned int i = 0
     cdef np.ndarray[NUMPYFLOAT_t, ndim=1] retF
     cdef np.ndarray[NUMPYINT_t, ndim=1] retI
 
@@ -773,44 +996,57 @@ cdef np.ndarray asNumpyArray(i_f* ds):
         retI = np.empty([ds.validLenght], dtype=NUMPYINT)
         dsiarr_view = ds.data
         iarr_view =  retI
-        with nogil:
-            for i in prange(ds.validLenght):
-                iarr_view[i] = dsiarr_view[i]
+#        with nogil:
+        for i in range(ds.validLenght):
+            iarr_view[i] = dsiarr_view[i]
         return retI
     else:
         retF = np.empty([ds.validLenght], dtype=NUMPYFLOAT)
         dsfarr_view = ds.data
         farr_view = retF
-        with nogil:
-            for i in prange(ds.validLenght):
-                farr_view[i] = dsfarr_view[i]
+#        with nogil:
+        for i in range(ds.validLenght):
+            farr_view[i] = dsfarr_view[i]
         return retF
 
 
-class aiPostProcessSteps:
-    aiProcess_CalcTangentSpace = cPostprocess.aiProcess_CalcTangentSpace
-    aiProcess_JoinIdenticalVertices = cPostprocess.aiProcess_JoinIdenticalVertices
-    aiProcess_MakeLeftHanded = cPostprocess.aiProcess_MakeLeftHanded
-    aiProcess_Triangulate = cPostprocess.aiProcess_Triangulate
-    aiProcess_RemoveComponent = cPostprocess.aiProcess_RemoveComponent
-    aiProcess_GenNormals = cPostprocess.aiProcess_GenNormals
-    aiProcess_GenSmoothNormals = cPostprocess.aiProcess_GenSmoothNormals
-    aiProcess_SplitLargeMeshes = cPostprocess.aiProcess_SplitLargeMeshes
-    aiProcess_PreTransformVertices = cPostprocess.aiProcess_PreTransformVertices
-    aiProcess_LimitBoneWeights = cPostprocess.aiProcess_LimitBoneWeights
-    aiProcess_ValidateDataStructure = cPostprocess.aiProcess_ValidateDataStructure
-    aiProcess_ImproveCacheLocality = cPostprocess.aiProcess_ImproveCacheLocality
-    aiProcess_RemoveRedundantMaterials = cPostprocess.aiProcess_RemoveRedundantMaterials
-    aiProcess_FixInfacingNormals = cPostprocess.aiProcess_FixInfacingNormals
-    aiProcess_SortByPType = cPostprocess.aiProcess_SortByPType
-    aiProcess_FindDegenerates = cPostprocess.aiProcess_FindDegenerates
-    aiProcess_FindInvalidData = cPostprocess.aiProcess_FindInvalidData
-    aiProcess_GenUVCoords = cPostprocess.aiProcess_GenUVCoords
-    aiProcess_TransformUVCoords = cPostprocess.aiProcess_TransformUVCoords
-    aiProcess_FindInstances = cPostprocess.aiProcess_FindInstances
-    aiProcess_OptimizeMeshes = cPostprocess.aiProcess_OptimizeMeshes
-    aiProcess_OptimizeGraph = cPostprocess.aiProcess_OptimizeGraph
-    aiProcess_FlipUVs = cPostprocess.aiProcess_FlipUVs
-    aiProcess_FlipWindingOrder = cPostprocess.aiProcess_FlipWindingOrder
-    aiProcess_SplitByBoneCount = cPostprocess.aiProcess_SplitByBoneCount
-    aiProcess_Debone = cPostprocess.aiProcess_Debone
+class aiPostProcessSteps(Flag):
+    aiProcessPreset_TargetRealtime_Fast        =  cPostProcess.aiProcessPreset_TargetRealtime_Fast
+    aiProcessPreset_TargetRealtime_MaxQuality  =  cPostProcess.aiProcessPreset_TargetRealtime_MaxQuality
+    aiProcessPreset_TargetRealtime_Quality     =  cPostProcess.aiProcessPreset_TargetRealtime_Quality
+    aiProcess_CalcTangentSpace                 =  cPostProcess.aiProcess_CalcTangentSpace
+    aiProcess_ConvertToLeftHanded              =  cPostProcess.aiProcess_ConvertToLeftHanded
+    aiProcess_Debone                           =  cPostProcess.aiProcess_Debone
+    aiProcess_DropNormals                      =  cPostProcess.aiProcess_DropNormals
+    aiProcess_EmbedTextures                    =  cPostProcess.aiProcess_EmbedTextures
+    aiProcess_FindDegenerates                  =  cPostProcess.aiProcess_FindDegenerates
+    aiProcess_FindInstances                    =  cPostProcess.aiProcess_FindInstances
+    aiProcess_FindInvalidData                  =  cPostProcess.aiProcess_FindInvalidData
+    aiProcess_FixInfacingNormals               =  cPostProcess.aiProcess_FixInfacingNormals
+    aiProcess_FlipUVs                          =  cPostProcess.aiProcess_FlipUVs
+    aiProcess_FlipWindingOrder                 =  cPostProcess.aiProcess_FlipWindingOrder
+    aiProcess_ForceGenNormals                  =  cPostProcess.aiProcess_ForceGenNormals
+    aiProcess_GenBoundingBoxes                 =  cPostProcess.aiProcess_GenBoundingBoxes
+    aiProcess_GenNormals                       =  cPostProcess.aiProcess_GenNormals
+    aiProcess_GenSmoothNormals                 =  cPostProcess.aiProcess_GenSmoothNormals
+    aiProcess_GenUVCoords                      =  cPostProcess.aiProcess_GenUVCoords
+    aiProcess_GlobalScale                      =  cPostProcess.aiProcess_GlobalScale
+    aiProcess_ImproveCacheLocality             =  cPostProcess.aiProcess_ImproveCacheLocality
+    aiProcess_JoinIdenticalVertices            =  cPostProcess.aiProcess_JoinIdenticalVertices
+    aiProcess_LimitBoneWeights                 =  cPostProcess.aiProcess_LimitBoneWeights
+    aiProcess_MakeLeftHanded                   =  cPostProcess.aiProcess_MakeLeftHanded
+    aiProcess_OptimizeGraph                    =  cPostProcess.aiProcess_OptimizeGraph
+    aiProcess_OptimizeMeshes                   =  cPostProcess.aiProcess_OptimizeMeshes
+    aiProcess_PopulateArmatureData             =  cPostProcess.aiProcess_PopulateArmatureData
+    aiProcess_PreTransformVertices             =  cPostProcess.aiProcess_PreTransformVertices
+    aiProcess_RemoveComponent                  =  cPostProcess.aiProcess_RemoveComponent
+    aiProcess_RemoveRedundantMaterials         =  cPostProcess.aiProcess_RemoveRedundantMaterials
+    aiProcess_SortByPType                      =  cPostProcess.aiProcess_SortByPType
+    aiProcess_SplitByBoneCount                 =  cPostProcess.aiProcess_SplitByBoneCount
+    aiProcess_SplitLargeMeshes                 =  cPostProcess.aiProcess_SplitLargeMeshes
+    aiProcess_TransformUVCoords                =  cPostProcess.aiProcess_TransformUVCoords
+    aiProcess_Triangulate                      =  cPostProcess.aiProcess_Triangulate
+    aiProcess_ValidateDataStructure            =  cPostProcess.aiProcess_ValidateDataStructure
+
+    def __int__(self):
+        return self.value

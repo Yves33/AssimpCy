@@ -2,6 +2,8 @@ cdef extern from "types.h" nogil:
     cdef cppclass aiString:
         char data[1024]
         aiString()
+        const char* C_Str()
+        void Clear()
 
     cdef cppclass aiVector3D:
         float x,y,z
@@ -25,7 +27,3 @@ cdef extern from "types.h" nogil:
         aiReturn_SUCCESS
         aiReturn_FAILURE
         aiReturn_OUTOFMEMORY
-
-#AI_SUCCESS = aiReturn_SUCCESS
-#AI_FAILURE = aiReturn_FAILURE
-#AI_OUTOFMEMORY = aiReturn_OUTOFMEMORY

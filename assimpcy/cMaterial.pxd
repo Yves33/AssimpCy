@@ -1,9 +1,16 @@
 from .cTypes cimport *
+from .cdefs cimport ai_real
 
-cdef extern from "mesh.h" nogil:
-    cdef const char* _AI_DEFAULT_MATERIAL_NAME 'AI_DEFAULT_MATERIAL_NAME'
-    #cdef const tup _AI_MATKEY_NAME 'AI_MATKEY_NAME'
-    
+cdef extern from "material.h" nogil:
+
+    cdef cppclass aiUVTransform:
+        aiVector2D mTranslation
+        aiVector2D mScaling
+        ai_real mRotation
+
+        aiUVTransform()
+
+
     cdef cppclass aiMaterialProperty:
         aiString mKey
         unsigned int mSemantic
@@ -22,17 +29,32 @@ cdef extern from "mesh.h" nogil:
 
         aiMaterial()
 
+        aiString GetName() const
 
-    #cdef aiReturn aiGetMaterialTexture(const aiMaterial* mat,
-    #                                    aiTextureType type,
-    #                                    unsigned int  index,
-    #                                    aiString* path,
-    #                                    aiTextureMapping* mapping,
-    #                                    unsigned int* uvindex	,
-    #                                    float* blend			,
-    #                                    aiTextureOp* op			,
-    #                                    aiTextureMapMode* mapmode,
-    #                                    unsigned int* flags       )
+        int GetTextureCount(aiTextureType type) const
+
+        aiReturn GetTexture(aiTextureType type,
+                            unsigned int  index,
+                            aiString* path,
+                            aiTextureMapping* mapping,
+                            unsigned int* uvindex,
+                            ai_real* blend,
+                            aiTextureOp* op,
+                            aiTextureMapMode* mapmode) const
+
+
+    cdef unsigned int aiGetMaterialTextureCount(const aiMaterial* pMat, aiTextureType type)
+
+    cdef aiReturn aiGetMaterialTexture(const aiMaterial* mat,
+                                        aiTextureType type,
+                                        unsigned int  index,
+                                        aiString* path,
+                                        aiTextureMapping* mapping,
+                                        unsigned int* uvindex	,
+                                        ai_real* blend			,
+                                        aiTextureOp* op			,
+                                        aiTextureMapMode* mapmode,
+                                        unsigned int* flags       )
 
     cdef aiReturn aiGetMaterialString(const aiMaterial* pMat,
                                         const char* pKey,
@@ -55,7 +77,6 @@ cdef extern from "mesh.h" nogil:
                                             unsigned int* pMax)
 
 
-
     cdef enum aiTextureType:
         aiTextureType_NONE
         aiTextureType_DIFFUSE
@@ -69,10 +90,29 @@ cdef extern from "mesh.h" nogil:
         aiTextureType_DISPLACEMENT
         aiTextureType_LIGHTMAP
         aiTextureType_REFLECTION
+        # PBR materials
+        aiTextureType_BASE_COLOR
+        aiTextureType_NORMAL_CAMERA
+        aiTextureType_EMISSION_COLOR
+        aiTextureType_METALNESS
+        aiTextureType_DIFFUSE_ROUGHNESS
+        aiTextureType_AMBIENT_OCCLUSION
+
         aiTextureType_UNKNOWN
+
+        #  PBR Material Modifiers
+        aiTextureType_SHEEN
+        aiTextureType_CLEARCOAT
+        aiTextureType_TRANSMISSION
+        # Maya material declarations
+        aiTextureType_MAYA_BASE
+        aiTextureType_MAYA_SPECULAR
+        aiTextureType_MAYA_SPECULAR_COLOR
+        aiTextureType_MAYA_SPECULAR_ROUGHNESS
 
     cdef enum aiPropertyTypeInfo:
         aiPTI_Float
+        aiPTI_Double
         aiPTI_String
         aiPTI_Integer
         aiPTI_Buffer
@@ -93,9 +133,43 @@ cdef extern from "mesh.h" nogil:
         aiTextureMapping_PLANE
         aiTextureMapping_OTHER
 
+    cdef enum aiTextureMapMode:
+        aiTextureMapMode_Wrap
+        aiTextureMapMode_Clamp
+        aiTextureMapMode_Decal
+        aiTextureMapMode_Mirror
+
+    cdef enum aiShadingMode:
+        aiShadingMode_Flat
+        aiShadingMode_Gouraud
+        aiShadingMode_Phong
+        aiShadingMode_Blinn
+        aiShadingMode_Toon
+        aiShadingMode_OrenNayar
+        aiShadingMode_Minnaert
+        aiShadingMode_CookTorrance
+        aiShadingMode_NoShading
+        aiShadingMode_Unlit
+        aiShadingMode_Fresnel
+        aiShadingMode_PBR_BRDF
+
+    cdef enum aiTextureFlags:
+        aiTextureFlags_Invert
+        aiTextureFlags_UseAlpha
+        aiTextureFlags_IgnoreAlpha
+
+    cdef enum aiBlendMode:
+        aiBlendMode_Default
+        aiBlendMode_Additive
 
 
-_aiPTI_Float = aiPTI_Float
-_aiPTI_String = aiPTI_String
-_aiPTI_Integer = aiPTI_Integer
-_aiPTI_Buffer = aiPTI_Buffer
+    cdef char* AI_MATKEY_TEXTURE(aiTextureType type, int N)
+    cdef char* AI_MATKEY_UVWSRC(aiTextureType type, int N)
+    cdef char* AI_MATKEY_TEXOP(aiTextureType type, int N)
+    cdef char* AI_MATKEY_MAPPING(aiTextureType type, int N)
+    cdef char* AI_MATKEY_TEXBLEND(aiTextureType type, int N)
+    cdef char* AI_MATKEY_MAPPINGMODE_U(aiTextureType type, int N)
+    cdef char* AI_MATKEY_MAPPINGMODE_V(aiTextureType type, int N)
+    cdef char* AI_MATKEY_TEXMAP_AXIS(aiTextureType type, int N)
+    cdef char* AI_MATKEY_UVTRANSFORM(aiTextureType type, int N)
+    cdef char* AI_MATKEY_TEXFLAGS(aiTextureType type, int N)
