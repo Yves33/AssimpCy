@@ -1,16 +1,22 @@
 Installation
 ------------
 
-Lets say you already tried::
+First, you should try::
 
     pip install assimpcy
 
-And that failed or you want to make changes to the code or
-recompile the extension with a different version of the Assimp library, so you will compile from the sources.
+If that fails or if you want to make changes to the code or recompile the extension
+with a different version of the Assimp library, you will have to compile from the sources.
 
-You will need:
-  * Cmake 3
-  * Microsoft Visual Studio 2017+ for Windows or Gcc for Linux and Mac (Clang might work too).
+For that you will need:
+
+* Cmake 3
+* Microsoft Visual Studio 2017+ for Windows, or Gcc for Linux and Mac (Clang might work too).
+* Cython 3.0.11
+* Numpy 1.24.4
+* Python headers
+
+Once you have those requirements, you can proceed.
 
 #. Download AssimpCy from:
 
@@ -18,36 +24,31 @@ You will need:
 
    And extract the zip package (or clone the repository with Git).
 
-#. Download Assimp from the official page (minimum version 5.0.1):
+#. Download Assimp from the official page (minimum version 5.4.3):
 
    http://www.assimp.org/
 
-#. Compile Assimp with the following options for cmake::
+#. Configure Cmake with the following options::
 
-    -DBUILD_SHARED_LIBS=OFF -DASSIMP_INCLUDE_INSTALL_DIR=assimpcy_folder/files/include -DASSIMP_LIB_INSTALL_DIR=assimpcy_folder/files/lib -DASSIMP_BUILD_ZLIB=ON
+    -DASSIMP_BUILD_TESTS=OFF -DASSIMP_BUILD_SAMPLES=OFF -DASSIMP_BUILD_ASSIMP_TOOLS=OFF -DBUILD_SHARED_LIBS=OFF -DASSIMP_NO_EXPORT=OFF -DASSIMP_BUILD_ZLIB=ON -DASSIMP_OPT_BUILD_PACKAGES=OFF -DCMAKE_BUILD_TYPE=Release
 
-   Replace ``assimpcy_folder`` with the path where AssimpCy was extracted / cloned.
 
-   Compile and install Assimp with::
+   Then compile and install Assimp with::
 
         make
         make install
 
 
-   You should end up with Assimp headers in ``assimpcy_folder/files/include`` and static versions of 3 libraries in ``assimpcy_folder/files/lib``::
-
-        libassimp, libIrrXML, libzlibstatic
-
+   That should place Assimp headers and libraries where appropriate for your system.
 
 #. Install `Cython <https://cython.org/>`_ and `Numpy <http://www.numpy.org/>`_ with::
 
-    pip install cython==0.29.24 numpy==1.21.4
+    pip install cython==3.0.11 numpy==1.24.4
 
-  .. note::
-    The versions specified are the ones used to build the wheels stored at Pypi.
 
-    You are free to try older or newer versions of the packages listed above,
-    if available.
+   .. note::
+        The versions specified are the ones used to build the wheels stored at Pypi.
+        You are free to try older or newer versions of the packages listed above, if available.
 
 #. Build AssimpCy by executing, from its folder::
 

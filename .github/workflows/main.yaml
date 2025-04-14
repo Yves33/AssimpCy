@@ -37,12 +37,12 @@ jobs:
         env:
           cache-name: cache-assimp5zip
         with:
-          path: "${{ github.workspace }}${{ steps.sepdet.outputs.value }}assimp-5.0.1"
+          path: "${{ github.workspace }}${{ steps.sepdet.outputs.value }}assimp-5.4.3"
           key: ${{ runner.os }}-assimp5unzipped
       - name: Get Assimp5
         if: steps.zip-cache.outputs.cache-hit != 'true'
         run: |
-          $url = "https://github.com/assimp/assimp/archive/refs/tags/v5.0.1.zip"
+          $url = "https://github.com/assimp/assimp/archive/refs/tags/v5.4.3.zip"
           $output = "assimp5.zip"
 
           $wc = New-Object System.Net.WebClient
@@ -76,7 +76,7 @@ jobs:
         env:
           cache-name: cache-assimp5zip
         with:
-          path: "${{ github.workspace }}${{ steps.sepdet.outputs.value }}assimp-5.0.1"
+          path: "${{ github.workspace }}${{ steps.sepdet.outputs.value }}assimp-5.4.3"
           key: ${{ runner.os }}-assimp5unzipped
       - name: Cache Assimp built files
         id: files-cache
@@ -127,7 +127,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [ 3.8, "3.10", "pypy-3.7" ]
+        python-version: [ 3.8, "3.12", "pypy-3.7" ]
         os: [ windows-latest, ubuntu-latest, macos-11 ]
     runs-on: ${{ matrix.os }}
     if: ${{endsWith(github.ref,'ci_test')}}
@@ -160,8 +160,8 @@ jobs:
         if: env.is_windows  == 'true'
         run: |
           Remove-Item ${{ github.workspace }}\pyproject.toml
-          pip install numpy==1.21.4 setuptools wheel
-          pip install Cython==0.29.24 --install-option="--no-cython-compile"
+          pip install numpy==1.24.4 setuptools wheel
+          pip install Cython==3.0.11 --install-option="--no-cython-compile"
       - name: Install project
         run: pip install ${{ github.workspace }}
       - name: Test
@@ -196,7 +196,7 @@ jobs:
         env:
           cache-name: cache-assimp5zip
         with:
-          path: "${{ github.workspace }}${{ steps.sepdet.outputs.value }}assimp-5.0.1"
+          path: "${{ github.workspace }}${{ steps.sepdet.outputs.value }}assimp-5.4.3"
           key: ${{ runner.os }}-assimp5unzipped
       - name: Cache Assimp built files
         if: env.is_linux != 'true'
@@ -229,7 +229,7 @@ jobs:
                       mkdir {project}/files &&
                       chmod +x {project}/ci_scripts/buildAssimp.sh &&
                       {project}/ci_scripts/buildAssimp.sh
-          CIBW_BUILD: cp37-* cp38-* cp39-* cp310-* pp37-*
+          CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-* pp37-*
           CIBW_TEST_COMMAND: "python -m unittest discover -f -s {project}${{ steps.sepdet.outputs.value }}tests"
         run: python -m cibuildwheel --output-dir wheelhouse
       - uses: actions/upload-artifact@v2

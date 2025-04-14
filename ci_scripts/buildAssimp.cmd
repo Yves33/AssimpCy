@@ -1,4 +1,4 @@
-cd assimp-5.0.1
+cd assimp-5.4.3
 IF %ERRORLEVEL% NEQ 0 (EXIT /B %ERRORLEVEL%)
 
 echo "%GENERATOR%"

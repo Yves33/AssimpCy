@@ -14,7 +14,7 @@ Welcome to AssimpCy's documentation!
    usage
    about
 
-The simplest way to start using AssimpCy is installig with Pip::
+The simplest way to start using AssimpCy is with Pip::
 
     pip install assimpcy
 

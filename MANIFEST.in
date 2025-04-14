@@ -1,4 +1,4 @@
 # Include the license file
 include license.txt
 include assimpcy/*.pxd
-include readme.md
+include README.md
