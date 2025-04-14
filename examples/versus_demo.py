@@ -5,8 +5,8 @@ from pathlib import Path
 import os
 
 CHECKED_PATHS = [os.path.join('test', p) for p in ['models', 'models-nonbsd']]
-VALID_EXTENSIONS = ['.obj', '.3ds', '.off', '.lwo', '.dxf', '.ply', '.stl', '.dae', '.blend', '.md5anim', '.irrmesh',
-                    '.nff', '.md5mesh', '.lws']
+VALID_EXTENSIONS = ['.obj', '.3ds', '.off', '.lwo', '.dxf', '.ply', '.stl', '.dae', '.md5anim', '.irrmesh', '.nff',
+                    '.md5mesh', '.lws']
 LIBRARY_NAMES = ['pyassimp', "impasse", 'assimpcy']
 
 
@@ -36,7 +36,7 @@ def invoke(full_path, lib_name, print_info):
             from pyassimp import load, AssimpError, postprocess as pp
             try:
                 load_scene(load, full_path, "meshes", "materials", "textures", "animations", print_info,
-                                   processing=pp.aiProcess_Triangulate)
+                           processing=pp.aiProcess_Triangulate)
 
                 return 'ok'
             except AssimpError:
@@ -85,18 +85,23 @@ def main(models_path, print_info, libraries_to_test):
     if not os.path.exists(models_path):
         raise FileNotFoundError("Path to models doesn't exist.")
     timings = []
-    print(f'Importing all the models at "{models_path}" with:')
+    print(f'Importing models from "{models_path}" with:')
     for lib in libraries_to_test:
         print(f'{lib.capitalize()}, ', end='', flush=True)
         try:
-            _ = importlib.import_module(lib)
+            if lib == 'assimpcy':
+                import assimpcy
+            else:
+                _ = importlib.import_module(lib)
             print('found:')
             t = Timer(f"load_models('{models_path}', '{lib}', {print_info})", setup='from versus_demo import '
                                                                                     'load_models')
             secs = t.timeit(1)
             timings.append((lib, secs))
-        except ImportError:
+        except ModuleNotFoundError:
             print('not found.')
+        except Exception as ex:
+            print(f"error: {ex}")
 
     if len(timings) > 0:
         print("\nResults:")
@@ -131,5 +136,11 @@ if __name__ == '__main__':
         _libraries_to_test = _args.libraries_to_test
     else:
         _libraries_to_test = LIBRARY_NAMES
+
+    if "assimpcy" in _libraries_to_test:
+        try:
+            import assimpcy
+        except ImportError:
+            pass
 
     main(_args.path_to_models, _print_extra_info, _libraries_to_test)
