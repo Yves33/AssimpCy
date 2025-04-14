@@ -20,14 +20,14 @@ def getVersion():
 
 
 def getLongDescription():
-    desc_path = os.path.join(base_folder, 'docs', '_pypi_desc.rst')
+    desc_path = os.path.join(base_folder, 'README.md')
     try:
         with open(desc_path) as doc:
-            rst = doc.read()
-        return rst
+            md = doc.read()
+        return md
     except Exception as err:
         from warnings import warn
-        warn('Rst description failed: ' + str(err))
+        warn('Error retrieving description: ' + str(err))
         return 'Fast Python bindings for Assimp.'
 
 
@@ -50,7 +50,7 @@ local_libs_path = os.path.join(base_folder, 'files', 'lib')
 include_paths = [get_include(), local_includes_path, os.path.join(local_includes_path, 'assimp')]
 lib_paths = [local_libs_path]
 runtime_lib_paths = []
-libraries = ['assimp', 'IrrXML', 'zlibstatic']
+libraries = ['assimp', 'zlibstatic']
 extraCompile = []
 extraLink = []
 
@@ -61,12 +61,12 @@ if platform == 'win32':
     libPath = base + '\\lib'
     include_paths.extend([system_include_path, system_include_path + "\\assimp"])
     lib_paths.append(libPath)
-    extraCompile.extend(['/d2FH4-', '/EHsc', '/openmp'])
+    extraCompile.extend(['/d2FH4-', '/EHsc'])
 elif platform == 'darwin':
     extraLink.append('-stdlib=libc++')
     extraCompile.append('-stdlib=libc++')
     # look for suitable llvm compiler, default compiler does not compile nore support openmp
-    local_clang = sorted(glob('/usr/local/bin/clang++*')) 
+    local_clang = sorted(glob('/usr/local/bin/clang++*'))
     port_clang = sorted(glob('/opt/local/bin/clang++*'))
     brew_clang = sorted(glob('/usr/local/Cellar/llvm/*/bin/clang++*'))
     clang = local_clang + port_clang + brew_clang
@@ -105,21 +105,21 @@ elif platform == 'darwin':
         else:
             assimp_lib = '/usr/local/lib'
             include_paths.append('/usr/local/include/')
-        
+
         lib_paths.append(assimp_lib)
         include_paths.extend(['/usr/include/', '/usr/local/include/'])
         print('Using assimp headers:', assimp_head[-1])
         print('Using assimp lib:', assimp_lib)
-
-    extraCompile.append('-fopenmp')
-    extraLink.append('-fopenmp')
 else:
     include_paths.extend(['/usr/include', '/usr/local/include',
                          '/usr/include/assimp', '/usr/local/include/assimp'])
     lib_paths.extend(['/usr/lib', '/usr/local/lib'])
-    runtime_lib_paths.append("$ORIGIN")
-    extraCompile.extend(["-w", "-O3", '-fopenmp', '-std=c++11', '-pedantic'])
-    extraLink = ['-fopenmp', '-lgomp']
+    extraCompile = ["-DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION",
+                    "-Ofast",
+                    '-std=c++14',
+                    '-pedantic'
+                    ]
+    extraLink = []
 
 setup(
     name="AssimpCy",
@@ -127,7 +127,7 @@ setup(
     version=getVersion(),
     description='Fast Python bindings for Assimp.',
     long_description=getLongDescription(),
-    long_description_content_type='text/x-rst',
+    long_description_content_type='text/markdown',
     url='https://github.com/jr-garcia/AssimpCy',
     license='BSD3',
     classifiers=[
