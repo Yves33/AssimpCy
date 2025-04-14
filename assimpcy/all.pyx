@@ -428,9 +428,9 @@ cdef dict TEXTURE_TYPE_DICT = {
 cdef str TextureTypeToString(cMaterial.aiTextureType type):
     return TEXTURE_TYPE_DICT.get(type, "Unknown")
 
-def stringToTextureType(str type):
+def stringToTextureType(str typeStr):
     for key, value in TEXTURE_TYPE_DICT.items():
-        if value.lower() == type.lower():
+        if value.lower() == typeStr.lower():
             return aiTextureType(key)
     return aiTextureType.aiTextureType_UNKNOWN
 
@@ -806,21 +806,20 @@ cdef aiScene buildScene(const cScene.aiScene *cs):
 
 # -----------------------------------------------------
 
-def aiImportFile(str filepath, unsigned int flags=0):
+def aiImportFile(str filePath, unsigned int flags=0):
     """
     Usage:
         scene = aiImportFile(path, flags)
     There is no need to use 'aiReleaseImport' after.
 
-
-    :param filepath: The path to the 3d model file.
-    :type filepath: str
-    :param flags: (Optional) Any "or'ed" combination of aiPostrocessStep flags.
+    :param filePath: The path to the 3d model file.
+    :type filePath: str
+    :param flags: (Optional) Any "or'ed" combination of aiPostProcessSteps flags.
     :type flags: int
     :rtype: aiScene
     """
     cdef const cScene.aiScene* csc
-    cdef bytes bpath = filepath.encode()
+    cdef bytes bpath = filePath.encode()
     cdef const char* cpath = bpath
     with nogil:
         csc = cImporter.aiImportFile(cpath, flags)
@@ -871,7 +870,7 @@ def aiGetExportFormatCount():
 
 def aiGetExportFormatDescription(int pIndex):
     """
-    Returns a description of the nth export file format. Use aiGetExportFormatCount()
+    Returns a description of the Nth export file format. Use aiGetExportFormatCount()
     to learn how many export formats are supported.
     @param pIndex Index of the export format to retrieve information for. Valid range is
     0 to aiGetExportFormatCount()
@@ -922,7 +921,9 @@ class Exporter:
         :type sourcePath: str
         :param destinationPath: The path to save the converted 3d model.
         :type destinationPath: str
-        :param flags: (Optional) Any "or'ed" combination of aiPostrocessStep flags.
+        :param formatId: The string representing the destination format.
+        :type formatId: str
+        :param flags: (Optional) Any "or'ed" combination of aiPostProcessSteps flags.
         :type flags: int
         :rtype: aiScene
         """
